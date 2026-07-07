@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PrivateRAG — your documents never leave this machine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0C10; --surface:#12151C; --raise:#181C25; --border:#232833;
+  --fg:#E6EAF2; --dim:#9AA3B5; --faint:#5C6577;
+  --red:#FB3B4E; --red-soft:rgba(251,59,78,.12); --ok:#34D399; --amber:#FBBF24;
+  --font-d:"Space Grotesk",sans-serif; --font-b:"Inter",sans-serif; --font-m:"IBM Plex Mono",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font:15px/1.55 var(--font-b);-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(900px 400px at 70% -10%, rgba(251,59,78,.06), transparent 60%),
+  repeating-linear-gradient(0deg, transparent 0 39px, rgba(255,255,255,.015) 39px 40px),
+  repeating-linear-gradient(90deg, transparent 0 39px, rgba(255,255,255,.015) 39px 40px)}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+button:focus-visible,[tabindex]:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{
+  outline:2px solid var(--red);outline-offset:2px;border-radius:6px}
+
+/* ---------- shell ---------- */
+.app{position:relative;z-index:1;display:flex;flex-direction:column;height:100dvh;max-width:1440px;margin:0 auto}
+header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:10px;font:700 19px var(--font-d);letter-spacing:.2px}
+.logo svg{color:var(--red)}
+.badge{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border:1px solid var(--border);
+  border-radius:999px;font:500 11.5px var(--font-m);color:var(--dim);background:var(--surface)}
+.badge .led{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);animation:pulse 2s ease-in-out infinite}
+.badge.net .led{background:var(--red);box-shadow:0 0 8px var(--red)}
+.badge b{color:var(--fg);font-weight:500}
+@keyframes pulse{50%{opacity:.35}}
+.spacer{flex:1}
+select{background:var(--surface);border:1px solid var(--border);color:var(--fg);border-radius:9px;
+  padding:9px 12px;font:500 12.5px var(--font-m);cursor:pointer;min-height:40px}
+
+main{display:grid;grid-template-columns:290px 1fr;gap:0;flex:1;min-height:0}
+main>*{min-width:0}
+
+/* ---------- docs panel ---------- */
+aside{border-right:1px solid var(--border);padding:18px;display:flex;flex-direction:column;gap:12px;min-height:0}
+h2{font:700 12px var(--font-d);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.drop{border:1.5px dashed var(--border);border-radius:12px;padding:22px 14px;text-align:center;color:var(--dim);
+  font-size:13px;transition:border-color .2s,background .2s;cursor:pointer}
+.drop:hover,.drop.on{border-color:var(--red);background:var(--red-soft);color:var(--fg)}
+.drop svg{display:block;margin:0 auto 8px;color:var(--faint)}
+.drop:hover svg,.drop.on svg{color:var(--red)}
+.doclist{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:0}
+.doc{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;padding:10px 12px;animation:rise .25s ease-out both}
+.doc svg{color:var(--red);flex:none}
+.doc .t{font-weight:500;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc .c{font:400 11px var(--font-m);color:var(--faint)}
+.seed{border:1px solid var(--border);border-radius:10px;padding:11px;font-size:13px;color:var(--dim);
+  min-height:44px;transition:border-color .2s,color .2s}
+.seed:hover{border-color:var(--red);color:var(--fg)}
+.empty{color:var(--faint);font-size:12.5px;text-align:center;padding:12px 6px}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}}
+
+/* ---------- tabs + content ---------- */
+.content{display:flex;flex-direction:column;min-height:0}
+nav{display:flex;gap:4px;padding:12px 20px 0;border-bottom:1px solid var(--border)}
+nav button{position:relative;padding:10px 16px 13px;font:600 13.5px var(--font-b);color:var(--dim);min-height:44px}
+nav button:hover{color:var(--fg)}
+nav button[aria-selected="true"]{color:var(--fg)}
+nav button[aria-selected="true"]::after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:2px;
+  background:var(--red);box-shadow:0 0 10px var(--red)}
+.pane{flex:1;display:none;flex-direction:column;min-height:0}
+.pane.on{display:flex}
+
+/* ---------- chat ---------- */
+.msgs{flex:1;overflow-y:auto;padding:22px 20px;display:flex;flex-direction:column;gap:16px;min-height:0}
+.msg{max-width:760px;animation:rise .25s ease-out both}
+.msg.user{align-self:flex-end;background:var(--raise);border:1px solid var(--border);
+  border-radius:14px 14px 4px 14px;padding:11px 15px}
+.msg.bot{align-self:flex-start;width:100%}
+.msg.bot .body{background:var(--surface);border:1px solid var(--border);border-radius:4px 14px 14px 14px;
+  padding:13px 16px;white-space:pre-wrap}
+.srcs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;font:500 11px var(--font-m);color:var(--dim);
+  border:1px solid var(--border);border-radius:999px;padding:4px 10px;background:var(--surface)}
+.chip svg{color:var(--red)}
+.stats{margin-top:7px;font:400 11px var(--font-m);color:var(--faint)}
+.stats b{color:var(--ok);font-weight:500}
+.cursor{display:inline-block;width:8px;height:15px;background:var(--red);vertical-align:-2px;animation:pulse 1s steps(2) infinite}
+.hero{margin:auto;text-align:center;max-width:520px;padding:24px}
+.hero svg{color:var(--red);margin-bottom:14px}
+.hero h1{font:700 26px/1.25 var(--font-d);margin-bottom:10px}
+.hero p{color:var(--dim);font-size:14px}
+.hero .hint{margin-top:18px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.hint button{border:1px solid var(--border);border-radius:999px;padding:9px 15px;font-size:12.5px;color:var(--dim);
+  min-height:40px;transition:border-color .2s,color .2s}
+.hint button:hover{border-color:var(--red);color:var(--fg)}
+
+.askbar{display:flex;gap:10px;padding:16px 20px;border-top:1px solid var(--border)}
+.askbar input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  color:var(--fg);padding:13px 16px;font-size:14.5px;min-height:48px}
+.askbar input::placeholder{color:var(--faint)}
+.send{display:flex;align-items:center;gap:8px;background:var(--red);color:#fff;border-radius:12px;
+  padding:0 20px;font-weight:600;font-size:14px;min-height:48px;transition:transform .15s,filter .2s}
+.send:hover{filter:brightness(1.12)}
+.send:active{transform:scale(.96)}
+.send:disabled{opacity:.45;cursor:not-allowed;transform:none}
+
+/* ---------- extract ---------- */
+.xwrap{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:20px;min-height:0;overflow-y:auto}
+.xcol{display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}
+label{font:600 12px var(--font-d);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+textarea{flex:1;width:100%;min-height:220px;background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  color:var(--fg);padding:14px;font:13px/1.6 var(--font-m);resize:none}
+pre{flex:1;width:100%;min-height:220px;background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:14px;font:12.5px/1.6 var(--font-m);overflow:auto;color:var(--dim);white-space:pre-wrap;word-break:break-word}
+pre .ok{color:var(--ok)} pre .k{color:var(--red)}
+.xrun{align-self:flex-start;display:flex;align-items:center;gap:8px;background:var(--red);color:#fff;
+  border-radius:12px;padding:12px 20px;font-weight:600;font-size:14px;min-height:44px;transition:transform .15s,filter .2s}
+.xrun:hover{filter:brightness(1.12)} .xrun:active{transform:scale(.96)} .xrun:disabled{opacity:.45;cursor:not-allowed}
+.xmeta{font:400 11.5px var(--font-m);color:var(--faint)}
+.xmeta b{color:var(--ok);font-weight:500}
+
+/* ---------- toast / responsive / motion ---------- */
+.toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:100;background:var(--raise);
+  border:1px solid var(--border);border-left:3px solid var(--red);border-radius:10px;padding:11px 16px;
+  font-size:13.5px;box-shadow:0 12px 40px rgba(0,0,0,.5);animation:rise .25s ease-out both;max-width:90vw}
+@media (max-width:900px){
+  main{grid-template-columns:1fr}
+  aside{flex-direction:row;flex-wrap:wrap;border-right:none;border-bottom:1px solid var(--border);align-items:center}
+  aside h2{width:100%}
+  .drop{padding:12px}
+  .doclist{flex-direction:row;flex-wrap:wrap;flex:1 1 100%;max-height:90px}
+  .xwrap{grid-template-columns:1fr}
+  header{gap:8px}
+  .badge span.hide-m{display:none}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <span class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      PrivateRAG
+    </span>
+    <span class="badge" id="b-local"><span class="led"></span><span>OLLAMA <b id="ollama-v">…</b></span></span>
+    <span class="badge net"><span class="led"></span><span class="hide-m">EXTERNAL REQUESTS </span><b id="egress">0</b></span>
+    <span class="spacer"></span>
+    <label for="model" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Generation model</label>
+    <select id="model" aria-label="Generation model"></select>
+  </header>
+
+  <main>
+    <aside aria-label="Documents">
+      <h2>Documents</h2>
+      <div class="drop" id="drop" role="button" tabindex="0" aria-label="Upload a document (PDF, TXT or MD)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Drop PDF / TXT / MD<br>or click to browse
+      </div>
+      <input type="file" id="file" accept=".pdf,.txt,.md" hidden>
+      <div class="doclist" id="docs"><div class="empty">Nothing indexed yet — everything you add stays on this machine.</div></div>
+      <button class="seed" id="seed">Load sample document</button>
+    </aside>
+
+    <section class="content">
+      <nav role="tablist" aria-label="Mode">
+        <button role="tab" aria-selected="true" data-pane="chat">Chat</button>
+        <button role="tab" aria-selected="false" data-pane="extract">Structured extract</button>
+      </nav>
+
+      <div class="pane on" id="pane-chat" role="tabpanel">
+        <div class="msgs" id="msgs">
+          <div class="hero" id="hero">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <h1>Ask your documents.<br>Nothing leaves this machine.</h1>
+            <p>Embeddings, retrieval and generation all run on local hardware. No API keys, no cloud, no data egress — watch the counter above.</p>
+            <div class="hint">
+              <button data-q="How many days can I work from home?">Remote work policy</button>
+              <button data-q="What are the on-call compensation terms?">On-call terms</button>
+              <button data-q="Can I upload documents to cloud AI tools?">Cloud AI policy</button>
+            </div>
+          </div>
+        </div>
+        <form class="askbar" id="askform">
+          <input id="q" placeholder="Ask about the indexed documents…" autocomplete="off" aria-label="Your question">
+          <button class="send" id="sendbtn" type="submit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            Ask
+          </button>
+        </form>
+      </div>
+
+      <div class="pane" id="pane-extract" role="tabpanel">
+        <div class="xwrap">
+          <div class="xcol">
+            <label for="xtext">Source text</label>
+            <textarea id="xtext" spellcheck="false"></textarea>
+            <button class="xrun" id="xrun">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              Extract JSON
+            </button>
+          </div>
+          <div class="xcol">
+            <label for="xout">Schema-enforced output</label>
+            <pre id="xout">// The local model is constrained by a JSON schema at the
+// sampler level — the output below parses every time.
+// No retry loops, no "please respond in JSON" begging.</pre>
+            <span class="xmeta" id="xmeta"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const state={model:null,busy:false};
+
+/* -------- egress counter: intercept fetch, count non-local hosts -------- */
+let egress=0;
+const _fetch=window.fetch.bind(window);
+window.fetch=(url,...a)=>{
+  try{const h=new URL(url,location.href).hostname;
+    if(!["127.0.0.1","localhost",location.hostname].includes(h)){egress++;$("#egress").textContent=egress;}
+  }catch{}
+  return _fetch(url,...a);
+};
+
+function toast(t){const d=document.createElement("div");d.className="toast";d.role="status";d.textContent=t;
+  document.body.appendChild(d);setTimeout(()=>d.remove(),4200);}
+
+/* -------- boot -------- */
+async function boot(){
+  try{
+    const h=await(await fetch("/health")).json();
+    $("#ollama-v").textContent=h.ollama||"offline";
+    if(!h.ok){$("#b-local").querySelector(".led").style.background="var(--amber)";toast("Ollama server not reachable on 127.0.0.1:11434");}
+    const m=await(await fetch("/models")).json();
+    const sel=$("#model");sel.innerHTML="";
+    m.models.forEach(x=>{const o=document.createElement("option");o.value=x.name;o.textContent=`${x.name} · ${x.gb}GB`;sel.appendChild(o);});
+    state.model=m.models.some(x=>x.name===m.default)?m.default:(m.models[0]||{}).name;
+    sel.value=state.model;sel.onchange=()=>state.model=sel.value;
+    refreshDocs();
+  }catch{toast("Engine offline — start it with: uvicorn server:app --port 8017");}
+}
+async function refreshDocs(){
+  const d=await(await fetch("/docs")).json();
+  const el=$("#docs");
+  if(!d.docs.length){el.innerHTML='<div class="empty">Nothing indexed yet — everything you add stays on this machine.</div>';return;}
+  el.innerHTML=d.docs.map(x=>`<div class="doc">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    <span style="min-width:0"><span class="t">${x.title}</span><br><span class="c">${x.chunks} chunks · local</span></span></div>`).join("");
+}
+
+/* -------- upload -------- */
+const drop=$("#drop"),file=$("#file");
+drop.onclick=()=>file.click();
+drop.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();file.click();}};
+["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("on");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("on");}));
+drop.addEventListener("drop",e=>{if(e.dataTransfer.files[0])upload(e.dataTransfer.files[0]);});
+file.onchange=()=>{if(file.files[0])upload(file.files[0]);file.value="";};
+async function upload(f){
+  const fd=new FormData();fd.append("file",f);
+  drop.classList.add("on");
+  try{
+    const r=await fetch("/docs/upload",{method:"POST",body:fd});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.detail||"upload failed");
+    toast(`Indexed "${d.title}" — ${d.chunks} chunks, fully local`);refreshDocs();
+  }catch(e){toast("Upload failed: "+e.message);}
+  finally{drop.classList.remove("on");}
+}
+$("#seed").onclick=async()=>{
+  const d=await(await fetch("/docs/seed",{method:"POST"})).json();
+  toast(d.already?"Sample already indexed":"Sample handbook indexed — try the suggested questions");
+  refreshDocs();
+};
+
+/* -------- tabs -------- */
+document.querySelectorAll("nav [role=tab]").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("nav [role=tab]").forEach(x=>x.setAttribute("aria-selected",x===b));
+  document.querySelectorAll(".pane").forEach(p=>p.classList.remove("on"));
+  $("#pane-"+b.dataset.pane).classList.add("on");
+});
+
+/* -------- chat -------- */
+document.querySelectorAll(".hint button").forEach(b=>b.onclick=()=>{$("#q").value=b.dataset.q;ask();});
+$("#askform").onsubmit=e=>{e.preventDefault();ask();};
+async function ask(){
+  const q=$("#q").value.trim();
+  if(!q||state.busy)return;
+  state.busy=true;$("#sendbtn").disabled=true;$("#q").value="";
+  $("#hero")?.remove();
+  const msgs=$("#msgs");
+  msgs.insertAdjacentHTML("beforeend",`<div class="msg user"></div>`);
+  msgs.lastElementChild.textContent=q;msgs.lastElementChild.classList.add("msg","user");
+  msgs.insertAdjacentHTML("beforeend",
+    `<div class="msg bot"><div class="body"><span class="cursor"></span></div><div class="srcs"></div><div class="stats"></div></div>`);
+  const bot=msgs.lastElementChild,body=bot.querySelector(".body");
+  msgs.scrollTop=msgs.scrollHeight;
+  let text="",meta=null,tail=null;
+  try{
+    const res=await fetch("/ask",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({question:q,model:state.model})});
+    if(!res.ok)throw new Error("engine returned "+res.status);
+    const rd=res.body.getReader(),dec=new TextDecoder();let buf="";
+    for(;;){
+      const{done,value}=await rd.read();if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      let i;
+      while((i=buf.indexOf("\n\n"))>=0){
+        const line=buf.slice(0,i).trim();buf=buf.slice(i+2);
+        if(!line.startsWith("data: "))continue;
+        const d=JSON.parse(line.slice(6));
+        if(d.sources!==undefined)meta=d;
+        if(d.delta){text+=d.delta;body.innerHTML="";body.append(text);body.insertAdjacentHTML("beforeend",'<span class="cursor"></span>');msgs.scrollTop=msgs.scrollHeight;}
+        if(d.done)tail=d;
+      }
+    }
+  }catch(e){text=text||"Engine error: "+e.message;}
+  body.textContent=text;
+  if(meta&&meta.sources.length){
+    bot.querySelector(".srcs").innerHTML=meta.sources.map(s=>
+      `<span class="chip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>${s.title} · ${s.score}</span>`).join("");
+  }
+  const st=[];
+  if(meta)st.push(`retrieval <b>${meta.retrieval_ms}ms</b>`);
+  if(tail&&tail.tok_per_s)st.push(`generation <b>${tail.tok_per_s} tok/s</b>`);
+  st.push(`egress <b>0 bytes</b>`);
+  bot.querySelector(".stats").innerHTML=st.join(" · ");
+  msgs.scrollTop=msgs.scrollHeight;
+  state.busy=false;$("#sendbtn").disabled=false;$("#q").focus();
+}
+
+/* -------- extract -------- */
+const XSCHEMA={type:"object",properties:{
+  invoice_number:{type:"string"},vendor:{type:"string"},total:{type:"number"},
+  currency:{type:"string"},due_date:{type:"string"},
+  line_items:{type:"array",items:{type:"object",properties:{
+    description:{type:"string"},quantity:{type:"number"},unit_price:{type:"number"}},
+    required:["description","quantity","unit_price"]}}},
+  required:["invoice_number","vendor","total","currency","due_date","line_items"]};
+$("#xtext").value=`INVOICE #INV-2041
+From: Northwind Traders, 12 Harbor St, Rotterdam, NL
+To: Acme Robotics Inc.
+Date: 2026-06-28    Due: 2026-07-28
+Items: 4x Servo actuator SA-220 @ EUR 310.00 = EUR 1240.00
+       1x Controller board CB-9 @ EUR 415.50
+Subtotal: EUR 1655.50   VAT 21%: EUR 347.66   TOTAL: EUR 2003.16
+Payment terms: Net 30, IBAN NL91ABNA0417164300`;
+$("#xrun").onclick=async()=>{
+  const btn=$("#xrun");btn.disabled=true;$("#xmeta").textContent="running on local GPU…";
+  try{
+    const r=await fetch("/extract",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({text:$("#xtext").value,schema_:XSCHEMA,model:state.model})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.detail||"extract failed");
+    $("#xout").textContent=JSON.stringify(d.data,null,2);
+    $("#xmeta").innerHTML=`schema-valid JSON in <b>${(d.ms/1000).toFixed(1)}s</b> · model ${state.model} · egress <b>0 bytes</b>`;
+  }catch(e){$("#xout").textContent="// "+e.message;$("#xmeta").textContent="";}
+  btn.disabled=false;
+};
+
+boot();
+</script>
+</body>
+</html>

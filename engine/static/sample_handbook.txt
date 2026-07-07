@@ -1,0 +1,33 @@
+Acme Robotics — Employee Handbook (excerpt)
+
+Vacation policy
+
+Full-time employees accrue 1.75 vacation days per month, capped at 28 days.
+Unused days roll over up to a maximum of 10 days into the next calendar year.
+Vacation requests longer than 5 consecutive days require manager approval at
+least 3 weeks in advance.
+
+Remote work
+
+Employees may work remotely up to 3 days per week. Fully remote arrangements
+require VP approval and a home-office security review. Company laptops must
+use full-disk encryption and the corporate VPN when off-site.
+
+Expense reimbursement
+
+Business expenses under $75 do not require receipts. All expenses must be
+submitted within 60 days via the Concur portal. Per-diem for travel is $55
+domestic and $80 international.
+
+Security policy
+
+Confidential documents must never be uploaded to third-party cloud services,
+including AI assistants and translation tools. All document processing must
+happen on approved on-premise infrastructure. Violations are subject to
+disciplinary action up to termination.
+
+On-call rotation
+
+Engineers join the on-call rotation after 3 months of employment. On-call
+weeks are compensated with 1 extra vacation day and a $250 stipend. Response
+time SLA is 15 minutes for P1 incidents and 2 hours for P2.
