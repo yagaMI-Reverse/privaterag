@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PrivateRAG — RAG that never leaves your machine</title>
+<meta name="description" content="Document Q&A and structured extraction running entirely on local hardware. No API keys, no cloud, no data egress — verified live.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0C10; --surface:#12151C; --raise:#181C25; --border:#232833;
+  --fg:#E6EAF2; --dim:#9AA3B5; --faint:#5C6577;
+  --red:#FB3B4E; --red-soft:rgba(251,59,78,.10); --ok:#34D399;
+  --font-d:"Space Grotesk",sans-serif; --font-b:"Inter",sans-serif; --font-m:"IBM Plex Mono",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--fg);font:16px/1.6 var(--font-b);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(1000px 500px at 75% -10%, rgba(251,59,78,.07), transparent 60%),
+  repeating-linear-gradient(0deg, transparent 0 39px, rgba(255,255,255,.014) 39px 40px),
+  repeating-linear-gradient(90deg, transparent 0 39px, rgba(255,255,255,.014) 39px 40px)}
+.wrap{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:0 24px}
+a{color:inherit}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto}}
+@media (max-width:560px){
+  nav .ghost{display:none}
+  .egress{flex-direction:column;text-align:center;align-items:center}
+  header{padding:52px 0 44px}
+}
+
+/* nav */
+nav{position:relative;z-index:1;border-bottom:1px solid var(--border)}
+nav .wrap{display:flex;align-items:center;gap:14px;height:64px}
+.logo{display:flex;align-items:center;gap:9px;font:700 18px var(--font-d)}
+.logo svg{color:var(--red)}
+.grow{flex:1}
+.ghost{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:10px;
+  padding:9px 15px;font:600 13px var(--font-b);color:var(--dim);text-decoration:none;transition:.2s;min-height:40px}
+.ghost:hover{border-color:var(--red);color:var(--fg)}
+.solid{display:inline-flex;align-items:center;gap:8px;background:var(--red);color:#fff;border-radius:10px;
+  padding:10px 18px;font:600 14px var(--font-b);text-decoration:none;transition:.2s;min-height:44px}
+.solid:hover{filter:brightness(1.12)}
+
+/* hero */
+header{padding:72px 0 56px;text-align:center}
+.pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--surface);
+  border-radius:999px;padding:7px 14px;font:500 12px var(--font-m);color:var(--dim);margin-bottom:26px}
+.pill .led{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+h1{font:700 clamp(34px,6vw,58px)/1.08 var(--font-d);letter-spacing:-.02em;margin-bottom:20px}
+h1 .g{color:var(--red)}
+.sub{max-width:640px;margin:0 auto;color:var(--dim);font-size:clamp(16px,2.2vw,19px)}
+.cta{margin-top:34px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+
+/* egress badge */
+.egress{margin:44px auto 0;max-width:440px;border:1px solid var(--border);background:var(--surface);
+  border-radius:14px;padding:18px 22px;display:flex;align-items:center;gap:16px;text-align:left}
+.egress .big{font:700 30px var(--font-d);color:var(--ok);font-variant-numeric:tabular-nums}
+.egress .lbl{font:500 12px var(--font-m);color:var(--faint);text-transform:uppercase;letter-spacing:.08em}
+.egress .desc{font-size:13px;color:var(--dim)}
+
+/* sections */
+section{padding:56px 0}
+.eyebrow{font:600 12px var(--font-d);letter-spacing:.16em;text-transform:uppercase;color:var(--red);margin-bottom:12px}
+h2{font:700 clamp(24px,4vw,34px)/1.15 var(--font-d);letter-spacing:-.01em;margin-bottom:14px}
+.lead{color:var(--dim);max-width:620px;margin-bottom:32px}
+
+/* why grid */
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.card{border:1px solid var(--border);background:var(--surface);border-radius:14px;padding:22px;transition:.2s}
+.card:hover{border-color:#333c4a;transform:translateY(-3px)}
+.card .ico{width:38px;height:38px;border-radius:10px;background:var(--red-soft);color:var(--red);
+  display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.card h3{font:600 16px var(--font-b);margin-bottom:6px}
+.card p{font-size:14px;color:var(--dim)}
+
+/* bench table */
+.tbl{width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.tbl th,.tbl td{padding:14px 16px;text-align:left;border-bottom:1px solid var(--border)}
+.tbl thead th{background:var(--surface);font:600 12px var(--font-m);text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl td:first-child{font:500 13px var(--font-m);color:var(--fg)}
+.tbl .hl{color:var(--ok);font-weight:600;font-variant-numeric:tabular-nums}
+.tblwrap{overflow-x:auto}
+.mini{margin-top:14px;font-size:13px;color:var(--faint)}
+
+/* arch */
+.arch{border:1px solid var(--border);background:var(--surface);border-radius:14px;padding:26px;overflow-x:auto}
+.arch pre{font:400 12.5px/1.75 var(--font-m);color:var(--dim);white-space:pre}
+.arch .r{color:var(--red)} .arch .o{color:var(--ok)}
+
+/* steps */
+.steps{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.step{border:1px solid var(--border);background:var(--surface);border-radius:14px;padding:22px}
+.step .n{font:700 13px var(--font-m);color:var(--red);margin-bottom:10px}
+.step h3{font:600 15px var(--font-b);margin-bottom:6px}
+.step p{font-size:13.5px;color:var(--dim)}
+
+/* code */
+.code{border:1px solid var(--border);background:#0D0F14;border-radius:14px;padding:20px 22px;overflow-x:auto}
+.code pre{font:400 13px/1.8 var(--font-m);color:var(--fg);white-space:pre}
+.code .c{color:var(--faint)} .code .p{color:var(--red)}
+
+/* footer */
+footer{border-top:1px solid var(--border);padding:40px 0;text-align:center;color:var(--faint);font-size:13px}
+footer a{color:var(--dim);text-decoration:none}footer a:hover{color:var(--fg)}
+.disc{max-width:640px;margin:26px auto 0;font-size:13px;color:var(--faint);border:1px dashed var(--border);border-radius:12px;padding:16px}
+</style>
+</head>
+<body>
+<nav><div class="wrap">
+  <span class="logo">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    PrivateRAG
+  </span>
+  <span class="grow"></span>
+  <a class="ghost" href="#benchmarks">Benchmarks</a>
+  <a class="solid" href="https://github.com/yagaMI-Reverse" target="_blank" rel="noopener">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.8-1.3-1.8-1.1-.7 0-.7 0-.7 1.2 0 1.9 1.2 1.9 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.4-.5-1.6.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17 4.6 18 4.9 18 4.9c.7 1.6.2 2.8.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3z"/></svg>
+    GitHub
+  </a>
+</div></nav>
+
+<header><div class="wrap">
+  <span class="pill"><span class="led"></span>100% LOCAL · NO API KEYS · NO EGRESS</span>
+  <h1>Ask your documents.<br><span class="g">Nothing leaves the machine.</span></h1>
+  <p class="sub">A retrieval-augmented generation engine where embeddings, retrieval and generation all run on a self-hosted model. Built for confidential documents that can't touch a cloud API.</p>
+  <div class="cta">
+    <a class="solid" href="https://github.com/yagaMI-Reverse" target="_blank" rel="noopener">View the code</a>
+    <a class="ghost" href="#run">Run it locally</a>
+  </div>
+  <div class="egress">
+    <div><div class="big" id="counter">0</div><div class="lbl">External requests</div></div>
+    <div class="desc">This page makes zero calls to any AI service. The engine makes zero calls, period — verified by a live counter in the UI.</div>
+  </div>
+</div></header>
+
+<section id="why"><div class="wrap">
+  <div class="eyebrow">Why local</div>
+  <h2>Some documents can't go to the cloud</h2>
+  <p class="lead">Legal contracts, medical records, financial statements, internal HR files — the moment they hit a third-party API, you've lost control of them. PrivateRAG keeps every byte on hardware you own.</p>
+  <div class="grid">
+    <div class="card">
+      <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+      <h3>Data never leaves</h3><p>No API keys, no outbound requests. Works air-gapped. Your corpus stays on the box.</p>
+    </div>
+    <div class="card">
+      <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+      <h3>Zero per-token cost</h3><p>Runs on a ~$300 consumer GPU. No metered billing, no surprise invoices at scale.</p>
+    </div>
+    <div class="card">
+      <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+      <h3>Grounded, not guessing</h3><p>Answers cite their sources and refuse when the answer isn't in your documents.</p>
+    </div>
+    <div class="card">
+      <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+      <h3>Schema-locked JSON</h3><p>Structured extraction constrained at the sampler level — the output parses every time.</p>
+    </div>
+  </div>
+</div></section>
+
+<section id="benchmarks"><div class="wrap">
+  <div class="eyebrow">Benchmarks</div>
+  <h2>Fast enough to feel instant</h2>
+  <p class="lead">Measured end-to-end on a single NVIDIA RTX 4060 (8 GB), warm model. Retrieval uses local <code>nomic-embed-text</code> embeddings with cosine search.</p>
+  <div class="tblwrap"><table class="tbl">
+    <thead><tr><th>Model</th><th>First token</th><th>Generation</th><th>Structured extract</th></tr></thead>
+    <tbody>
+      <tr><td>qwen2.5:3b (q4)</td><td>~0.2 s</td><td class="hl">~95 tok/s</td><td>~2.0 s</td></tr>
+      <tr><td>qwen2.5:7b (q4)</td><td>~0.25 s</td><td class="hl">~46 tok/s</td><td>~3.5 s</td></tr>
+    </tbody>
+  </table></div>
+  <p class="mini">Retrieval &lt; 150 ms per query · extraction verified against a JSON-Schema (invoice → typed line items, totals, dates).</p>
+</div></section>
+
+<section id="how"><div class="wrap">
+  <div class="eyebrow">Architecture</div>
+  <h2>One box, no network</h2>
+  <div class="arch"><pre>        <span class="r">┌─────────────────────  your machine  ─────────────────────┐</span>
+        │                                                           │
+ docs ──┼──►  chunk  ──►  nomic-embed-text  ──►  vector store        │
+        │                                            │              │
+ query ─┼──►  nomic-embed-text  ──►  cosine top-k  ──┘              │
+        │                                │                          │
+        │                                ▼                          │
+        │                       qwen2.5 (Ollama)  ──► <span class="o">streamed answer</span>  │
+        │                                             <span class="o">+ cited sources</span>  │
+        <span class="r">└───────────────────────────────────────────────────────────┘</span>
+                        <span class="o">no network egress — ever</span></pre></div>
+</div></section>
+
+<section id="run"><div class="wrap">
+  <div class="eyebrow">Run it yourself</div>
+  <h2>Three commands</h2>
+  <p class="lead">Requires <a href="https://ollama.com" target="_blank" rel="noopener" style="color:var(--red)">Ollama</a> and Python 3.10+. The models download once; after that it's fully offline.</p>
+  <div class="code"><pre><span class="c"># pull the models (one-time)</span>
+ollama pull qwen2.5:3b
+ollama pull nomic-embed-text
+
+<span class="c"># start the engine</span>
+cd engine <span class="p">&&</span> pip install -r requirements.txt
+uvicorn server:app --port 8017
+
+<span class="c"># open http://localhost:8017 — watch the egress counter stay at 0</span></pre></div>
+</div></section>
+
+<footer><div class="wrap">
+  <p>PrivateRAG — a portfolio project by <a href="https://github.com/yagaMI-Reverse" target="_blank" rel="noopener">yagaMI-Reverse</a>. The sample data is fictional.</p>
+  <div class="disc">The live engine runs on local hardware with a GPU, so it isn't hosted here — this page is the write-up and the code is on GitHub. Clone it and it runs on your own machine in three commands.</div>
+</div></footer>
+
+<script>
+// count-up the "0" for a beat of drama, then hold at 0 forever (the honest number).
+(function(){
+  var el=document.getElementById("counter");
+  if(!el||matchMedia("(prefers-reduced-motion:reduce)").matches)return;
+  var seq=[0,0,0],i=0;
+  var t=setInterval(function(){el.textContent=seq[i++];if(i>=seq.length){clearInterval(t);el.textContent="0";}},400);
+})();
+</script>
+</body>
+</html>
